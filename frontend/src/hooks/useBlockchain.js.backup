@@ -1,0 +1,463 @@
+// FILE: frontend/src/hooks/useBlockchain.js
+// COMPLETE FIXED VERSION - Better error handling and connection management
+
+import { useState, useEffect, useCallback } from 'react';
+import { ethers } from 'ethers';
+import { NETWORK_CONFIG, deployedAddresses, WEATHER_TYPES } from '../contracts/contractConfig';
+
+// Contract ABIs (simplified for demo)
+const WEATHER_ORACLE_ABI = [
+  "function getCurrentWeather() view returns (uint8)",
+  "function updateWeather(uint8 newWeather) external",
+  "function getWeatherHistory(uint256 count) view returns (uint8[])",
+  "event WeatherUpdated(uint8 newWeather, uint256 timestamp)"
+];
+
+const WEATHER_TOKEN_ABI = [
+  "function balanceOf(address account) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)"
+];
+
+const QUEST_MANAGER_ABI = [
+  "function getActiveQuests() view returns (uint256[])",
+  "function completeQuest(uint256 questId) external",
+  "function getQuestDetails(uint256 questId) view returns (tuple(string title, string description, uint256 reward, uint8 difficulty))",
+  "event QuestCompleted(address player, uint256 questId, uint256 reward)"
+];
+
+const WEATHER_NFT_ABI = [
+  "function mint(address to, uint256 weatherType) external",
+  "function tokenURI(uint256 tokenId) view returns (string)",
+  "function balanceOf(address owner) view returns (uint256)",
+  "function ownerOf(uint256 tokenId) view returns (address)"
+];
+
+export const useBlockchain = () => {
+  // State management
+  const [provider, setProvider] = useState(null);
+  const [signer, setSigner] = useState(null);
+  const [account, setAccount] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [balance, setBalance] = useState('0.000000');
+  const [tokenBalance, setTokenBalance] = useState('0');
+  const [currentWeather, setCurrentWeather] = useState('Sunshine');
+  const [contracts, setContracts] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Clear error after 10 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  // Handle account changes
+  const handleAccountsChanged = useCallback((accounts) => {
+    console.log('👤 Account changed:', accounts);
+    if (accounts.length === 0) {
+      disconnectWallet();
+    } else {
+      setAccount(accounts[0]);
+      updateBalances(accounts[0]);
+    }
+  }, []);
+
+  // Handle network changes
+  const handleChainChanged = useCallback(() => {
+    console.log('🔄 Network changed, reloading...');
+    window.location.reload();
+  }, []);
+
+  // Update balances function
+  const updateBalances = useCallback(async (accountAddress = null) => {
+    const targetAccount = accountAddress || account;
+    if (!provider || !targetAccount) {
+      console.log('⚠️ Cannot update balances: missing provider or account');
+      return;
+    }
+
+    try {
+      console.log('💰 Updating balances for:', targetAccount);
+      
+      // Get STT balance
+      const sttBalance = await provider.getBalance(targetAccount);
+      const formattedBalance = ethers.formatEther(sttBalance);
+      setBalance(formattedBalance);
+      console.log('✅ STT Balance updated:', formattedBalance);
+
+      // Get token balance if contract exists
+      if (contracts.weatherToken) {
+        try {
+          const tokenBal = await contracts.weatherToken.balanceOf(targetAccount);
+          const formattedTokenBalance = ethers.formatEther(tokenBal);
+          setTokenBalance(formattedTokenBalance);
+          console.log('✅ Token Balance updated:', formattedTokenBalance);
+        } catch (tokenError) {
+          console.log('⚠️ Could not fetch token balance:', tokenError.message);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to update balances:', error);
+      setError(`Balance update failed: ${error.message}`);
+    }
+  }, [provider, account, contracts.weatherToken]);
+
+  // Initialize provider and check connection on mount
+  useEffect(() => {
+    const initializeApp = async () => {
+      console.log('🚀 Initializing blockchain app...');
+      
+      if (typeof window.ethereum === 'undefined') {
+        setError('Please install MetaMask to use this app');
+        return;
+      }
+
+      try {
+        // Create provider
+        const web3Provider = new ethers.BrowserProvider(window.ethereum);
+        setProvider(web3Provider);
+        console.log('✅ Provider created');
+
+        // Set up event listeners
+        window.ethereum.on('accountsChanged', handleAccountsChanged);
+        window.ethereum.on('chainChanged', handleChainChanged);
+
+        // Check if already connected
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) {
+          console.log('🔗 Already connected to account:', accounts[0]);
+          await connectWalletDirect(web3Provider, accounts[0]);
+        } else {
+          console.log('👤 No accounts connected');
+        }
+      } catch (error) {
+        console.error('❌ Failed to initialize app:', error);
+        setError('Failed to initialize wallet connection');
+      }
+    };
+
+    initializeApp();
+
+    // Cleanup function
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
+      }
+    };
+  }, []); // Empty dependency array for initialization
+
+  // Switch to Somnia Network
+  const switchToSomniaNetwork = async () => {
+    try {
+      console.log('🔄 Switching to Somnia network...');
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: NETWORK_CONFIG.chainIdHex }],
+      });
+      console.log('✅ Switched to Somnia network');
+    } catch (switchError) {
+      if (switchError.code === 4902) {
+        console.log('📝 Adding Somnia network...');
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: NETWORK_CONFIG.chainIdHex,
+              chainName: NETWORK_CONFIG.name,
+              rpcUrls: [NETWORK_CONFIG.rpcUrl],
+              nativeCurrency: NETWORK_CONFIG.nativeCurrency,
+              blockExplorerUrls: [NETWORK_CONFIG.blockExplorer]
+            }],
+          });
+          console.log('✅ Somnia network added');
+        } catch (addError) {
+          throw new Error('Failed to add Somnia network');
+        }
+      } else {
+        throw switchError;
+      }
+    }
+  };
+
+  // Initialize smart contracts
+  const initializeContracts = async (signerInstance) => {
+    try {
+      console.log('📋 Initializing contracts...');
+      
+      const contractInstances = {};
+
+      // Try to initialize each contract
+      try {
+        contractInstances.weatherOracle = new ethers.Contract(
+          deployedAddresses.WeatherOracle,
+          WEATHER_ORACLE_ABI,
+          signerInstance
+        );
+        console.log('✅ WeatherOracle contract initialized');
+      } catch (error) {
+        console.log('⚠️ WeatherOracle contract failed:', error.message);
+      }
+
+      try {
+        contractInstances.weatherToken = new ethers.Contract(
+          deployedAddresses.WeatherToken,
+          WEATHER_TOKEN_ABI,
+          signerInstance
+        );
+        console.log('✅ WeatherToken contract initialized');
+      } catch (error) {
+        console.log('⚠️ WeatherToken contract failed:', error.message);
+      }
+
+      try {
+        contractInstances.questManager = new ethers.Contract(
+          deployedAddresses.QuestManager,
+          QUEST_MANAGER_ABI,
+          signerInstance
+        );
+        console.log('✅ QuestManager contract initialized');
+      } catch (error) {
+        console.log('⚠️ QuestManager contract failed:', error.message);
+      }
+
+      try {
+        contractInstances.weatherNFT = new ethers.Contract(
+          deployedAddresses.WeatherNFT,
+          WEATHER_NFT_ABI,
+          signerInstance
+        );
+        console.log('✅ WeatherNFT contract initialized');
+      } catch (error) {
+        console.log('⚠️ WeatherNFT contract failed:', error.message);
+      }
+
+      setContracts(contractInstances);
+      console.log(`✅ ${Object.keys(contractInstances).length} contracts initialized`);
+      
+      return contractInstances;
+    } catch (error) {
+      console.error('❌ Failed to initialize contracts:', error);
+      setError('Contract initialization failed - running in demo mode');
+      return {};
+    }
+  };
+
+  // Direct wallet connection function
+  const connectWalletDirect = async (web3Provider = null, existingAccount = null) => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('🔗 Connecting wallet...');
+
+      const currentProvider = web3Provider || provider;
+      if (!currentProvider) {
+        throw new Error('No provider available');
+      }
+
+      let accounts;
+      if (existingAccount) {
+        accounts = [existingAccount];
+      } else {
+        // Request account access
+        accounts = await window.ethereum.request({
+          method: 'eth_requestAccounts',
+        });
+      }
+
+      if (accounts.length === 0) {
+        throw new Error('No accounts found');
+      }
+
+      console.log('👤 Account:', accounts[0]);
+
+      // Switch to Somnia network
+      await switchToSomniaNetwork();
+
+      // Get signer
+      const web3Signer = await currentProvider.getSigner();
+      
+      // Verify signer account matches
+      const signerAddress = await web3Signer.getAddress();
+      console.log('✅ Signer address:', signerAddress);
+
+      // Update state
+      setProvider(currentProvider);
+      setSigner(web3Signer);
+      setAccount(accounts[0]);
+      setIsConnected(true);
+
+      // Initialize contracts
+      const contractInstances = await initializeContracts(web3Signer);
+
+      // Update balances
+      await updateBalances(accounts[0]);
+
+      // Get current weather from contract or set default
+      try {
+        if (contractInstances.weatherOracle) {
+          const weatherId = await contractInstances.weatherOracle.getCurrentWeather();
+          const weatherName = WEATHER_TYPES[weatherId] || 'Sunshine';
+          setCurrentWeather(weatherName);
+          console.log('🌤️ Current weather:', weatherName);
+        } else {
+          setCurrentWeather('Sunshine');
+          console.log('🌤️ Default weather set: Sunshine');
+        }
+      } catch (error) {
+        console.log('⚠️ Could not get weather from contract, using default');
+        setCurrentWeather('Sunshine');
+      }
+
+      console.log('✅ Wallet connected successfully');
+
+    } catch (error) {
+      console.error('❌ Failed to connect wallet:', error);
+      setError(error.message || 'Failed to connect wallet');
+      
+      // Reset connection state
+      setIsConnected(false);
+      setAccount(null);
+      setSigner(null);
+      setContracts({});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Public connect wallet function
+  const connectWallet = useCallback(() => {
+    connectWalletDirect();
+  }, []);
+
+  // Update weather
+  const updateWeather = async (newWeatherId) => {
+    if (!contracts.weatherOracle || !signer) {
+      console.log('⚠️ Contract not available, updating local weather only');
+      const weatherName = WEATHER_TYPES[newWeatherId] || 'Sunshine';
+      setCurrentWeather(weatherName);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('🌦️ Updating weather to:', newWeatherId);
+
+      const tx = await contracts.weatherOracle.updateWeather(newWeatherId);
+      await tx.wait();
+
+      // Update local state
+      const weatherName = WEATHER_TYPES[newWeatherId] || 'Sunshine';
+      setCurrentWeather(weatherName);
+
+      console.log('✅ Weather updated successfully');
+      return tx;
+    } catch (error) {
+      console.error('❌ Failed to update weather:', error);
+      setError('Weather update failed');
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Complete quest
+  const completeQuest = async (questId) => {
+    if (!contracts.questManager || !signer) {
+      throw new Error('Quest contract not available');
+    }
+
+    try {
+      setLoading(true);
+      const tx = await contracts.questManager.completeQuest(questId);
+      await tx.wait();
+
+      // Update balances after quest completion
+      await updateBalances();
+
+      console.log('✅ Quest completed successfully');
+      return tx;
+    } catch (error) {
+      console.error('❌ Failed to complete quest:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get current weather state
+  const getCurrentWeatherState = async () => {
+    if (!contracts.weatherOracle) {
+      console.log('⚠️ Weather oracle not available');
+      return currentWeather;
+    }
+
+    try {
+      const weatherId = await contracts.weatherOracle.getCurrentWeather();
+      const weatherName = WEATHER_TYPES[weatherId] || 'Sunshine';
+      setCurrentWeather(weatherName);
+      return weatherName;
+    } catch (error) {
+      console.error('❌ Failed to get weather state:', error);
+      return currentWeather;
+    }
+  };
+
+  // Disconnect wallet
+  const disconnectWallet = useCallback(() => {
+    console.log('🔌 Disconnecting wallet...');
+    setProvider(null);
+    setSigner(null);
+    setAccount(null);
+    setIsConnected(false);
+    setBalance('0.000000');
+    setTokenBalance('0');
+    setCurrentWeather('Sunshine');
+    setContracts({});
+    setError(null);
+    console.log('✅ Wallet disconnected');
+  }, []);
+
+  // Get contract status
+  const getContractStatus = useCallback(() => {
+    return {
+      WeatherOracle: deployedAddresses.WeatherOracle,
+      WeatherToken: deployedAddresses.WeatherToken,
+      QuestManager: deployedAddresses.QuestManager,
+      WeatherNFT: deployedAddresses.WeatherNFT,
+      MultiplayerSync: deployedAddresses.MultiplayerSync,
+      isConnected: Object.keys(contracts).length > 0,
+      network: NETWORK_CONFIG.name
+    };
+  }, [contracts]);
+
+  return {
+    // State
+    account,
+    isConnected,
+    balance,
+    tokenBalance,
+    currentWeather,
+    loading,
+    error,
+    provider,
+    signer,
+    contracts,
+
+    // Actions
+    connectWallet,
+    disconnectWallet,
+    updateWeather,
+    completeQuest,
+    updateBalances,
+    getCurrentWeatherState,
+    getContractStatus
+  };
+};
+
+export default useBlockchain;

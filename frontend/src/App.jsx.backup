@@ -1,0 +1,583 @@
+// FILE: frontend/src/App.jsx
+// UPDATED: Real blockchain integration instead of mock data
+
+import React, { useState, useEffect } from 'react';
+import { useBlockchain } from './hooks/useBlockchain';
+
+// Add base CSS reset and full-width styles
+const GlobalStyles = () => (
+  <style>{`
+    html, body, #root {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box;
+    }
+
+    *, *:before, *:after {
+      box-sizing: inherit;
+    }
+
+    #root {
+      overflow-x: hidden;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  `}</style>
+);
+
+// Weather Icons Component
+const WeatherIcon = ({ weather }) => {
+  const icons = {
+    'Storm': '⛈️',
+    'Sunshine': '☀️', 
+    'Fog': '🌫️',
+    'Rain': '🌧️',
+    'Snow': '❄️',
+    'Clear': '🌤️'
+  };
+  return <span style={{ fontSize: '4rem' }}>{icons[weather] || '🌤️'}</span>;
+};
+
+// Enhanced Wallet Connect Component
+const WalletConnect = ({ blockchain }) => {
+  const { connected, account, loading, error, connectWallet } = blockchain;
+  const [balance, setBalance] = useState('0');
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  // Get STT balance
+  useEffect(() => {
+    const getBalance = async () => {
+      if (connected && window.ethereum) {
+        try {
+          const balanceWei = await window.ethereum.request({
+            method: 'eth_getBalance',
+            params: [account, 'latest']
+          });
+          const balanceSTT = parseInt(balanceWei, 16) / Math.pow(10, 18);
+          setBalance(balanceSTT.toFixed(4));
+        } catch (error) {
+          console.error('Error getting balance:', error);
+        }
+      }
+    };
+    getBalance();
+  }, [connected, account]);
+
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    try {
+      await connectWallet();
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  if (!connected) {
+    return (
+      <div style={{
+        background: 'rgba(255,255,255,0.1)',
+        backdropFilter: 'blur(10px)',
+        borderRadius: '15px',
+        padding: '1.5rem',
+        marginBottom: '2rem',
+        textAlign: 'center',
+        border: '2px dashed rgba(255,255,255,0.3)'
+      }}>
+        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
+        <h3 style={{ color: '#fff', marginBottom: '1rem' }}>Connect Your Wallet</h3>
+        <p style={{ color: '#ccc', marginBottom: '1.5rem' }}>
+          Connect your MetaMask wallet to play the Weather Oracle Quest
+        </p>
+        {error && (
+          <div style={{
+            background: 'rgba(255, 68, 68, 0.2)',
+            padding: '1rem',
+            borderRadius: '8px',
+            marginBottom: '1rem',
+            color: '#ff4444'
+          }}>
+            {error}
+          </div>
+        )}
+        <button
+          onClick={handleConnect}
+          disabled={isConnecting || loading}
+          style={{
+            background: (isConnecting || loading) ? '#666' : 'linear-gradient(45deg, #4CAF50, #2196F3)',
+            border: 'none',
+            color: 'white',
+            padding: '1rem 2rem',
+            borderRadius: '10px',
+            cursor: (isConnecting || loading) ? 'not-allowed' : 'pointer',
+            fontSize: '1.1rem',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            margin: '0 auto'
+          }}
+        >
+          {(isConnecting || loading) ? (
+            <>
+              <div style={{
+                width: '20px',
+                height: '20px',
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderTop: '2px solid white',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }}></div>
+              Connecting...
+            </>
+          ) : (
+            <>🦊 Connect MetaMask</>
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.1)',
+      backdropFilter: 'blur(10px)',
+      borderRadius: '15px',
+      padding: '1.5rem',
+      marginBottom: '2rem',
+      border: '1px solid rgba(76, 175, 80, 0.5)'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            background: 'linear-gradient(45deg, #4CAF50, #2196F3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.2rem'
+          }}>
+            🔗
+          </div>
+          <div>
+            <div style={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '1rem' }}>
+              ✅ Wallet Connected
+            </div>
+            <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
+              {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Loading...'}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '1.2rem' }}>
+            {balance} STT
+          </div>
+          <div style={{ color: '#4CAF50', fontSize: '0.8rem' }}>
+            Somnia Testnet
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Real Weather Dashboard using blockchain data
+const WeatherDashboard = ({ blockchain }) => {
+  const { currentWeather, weatherName, changeWeather, loading } = blockchain;
+  const [timeRemaining, setTimeRemaining] = useState(180);
+  const [nextWeather, setNextWeather] = useState('Rain');
+
+  // Weather countdown timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          const weathers = ['Storm', 'Sunshine', 'Fog', 'Rain', 'Snow'];
+          const currentIndex = weathers.findIndex(w => w === weatherName);
+          const nextIndex = (currentIndex + 1) % weathers.length;
+          setNextWeather(weathers[nextIndex]);
+          return 300; // Reset to 5 minutes
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [weatherName]);
+
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.1)',
+      backdropFilter: 'blur(10px)',
+      borderRadius: '20px',
+      padding: '2rem',
+      marginBottom: '2rem',
+      textAlign: 'center',
+      width: '100%'
+    }}>
+      <h2 style={{ color: '#fff', marginBottom: '1rem', fontSize: '1.8rem' }}>
+        Current Weather {loading && '🔄'}
+      </h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2rem' }}>
+        <WeatherIcon weather={weatherName || 'Sunshine'} />
+        <div>
+          <h3 style={{ color: '#fff', fontSize: '2.5rem', margin: 0 }}>
+            {weatherName || 'Loading...'}
+          </h3>
+          <p style={{ color: '#ccc', margin: '1rem 0', fontSize: '1.2rem' }}>
+            Next: {nextWeather} in {timeRemaining}s
+          </p>
+          <div style={{ marginTop: '1rem' }}>
+            <small style={{ color: '#666', fontSize: '0.9rem' }}>
+              Weather Type ID: {currentWeather}
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Real Quest Board using blockchain data
+const QuestBoard = ({ blockchain }) => {
+  const { availableQuests, completeQuest, loading, connected } = blockchain;
+  const [completingQuest, setCompletingQuest] = useState(null);
+
+  const handleCompleteQuest = async (questId) => {
+    if (!connected) {
+      alert('Please connect your wallet first!');
+      return;
+    }
+
+    setCompletingQuest(questId);
+    try {
+      const success = await completeQuest(questId);
+      if (success) {
+        alert('Quest completed successfully! Rewards have been distributed.');
+      }
+    } catch (error) {
+      alert('Quest completion failed: ' + error.message);
+    } finally {
+      setCompletingQuest(null);
+    }
+  };
+
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.1)',
+      backdropFilter: 'blur(10px)',
+      borderRadius: '20px',
+      padding: '2rem',
+      marginBottom: '2rem',
+      width: '100%'
+    }}>
+      <h2 style={{ color: '#fff', marginBottom: '1rem', fontSize: '1.8rem' }}>
+        Available Quests {loading && '🔄'}
+      </h2>
+      <div style={{ display: 'grid', gap: '1.5rem' }}>
+        {availableQuests.map((quest, index) => (
+          <div key={quest.id || index} style={{
+            background: 'rgba(255,255,255,0.05)',
+            padding: '1.5rem',
+            borderRadius: '15px',
+            border: quest.currentWeatherMatch ? '2px solid #4CAF50' : '1px solid rgba(255,255,255,0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+                  <h4 style={{ color: '#fff', margin: 0, fontSize: '1.3rem' }}>{quest.name}</h4>
+                  {quest.currentWeatherMatch && (
+                    <span style={{
+                      background: '#4CAF50',
+                      padding: '0.2rem 0.8rem',
+                      borderRadius: '12px',
+                      fontSize: '0.8rem',
+                      color: '#000',
+                      fontWeight: 'bold'
+                    }}>
+                      🌟 ACTIVE NOW
+                    </span>
+                  )}
+                </div>
+                <p style={{ color: '#ccc', margin: '1rem 0', fontSize: '1rem' }}>{quest.description}</p>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <span style={{
+                    background: '#2196F3',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '8px',
+                    fontSize: '1rem',
+                    color: '#fff',
+                    fontWeight: 'bold'
+                  }}>
+                    {quest.weatherType}
+                  </span>
+                  <span style={{ color: '#FFD700', fontSize: '1rem' }}>
+                    Reward: {quest.reward} $WEATHER
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => handleCompleteQuest(quest.id)}
+                disabled={!connected || completingQuest === quest.id || loading}
+                style={{
+                  background: (connected && !loading) ? 
+                    (quest.currentWeatherMatch ? '#4CAF50' : '#FF9800') : '#666',
+                  border: 'none',
+                  color: 'white',
+                  padding: '1rem 2rem',
+                  borderRadius: '10px',
+                  cursor: (connected && !loading) ? 'pointer' : 'not-allowed',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  marginLeft: '1rem',
+                  minWidth: '120px'
+                }}
+              >
+                {completingQuest === quest.id ? '🔄' : 
+                 !connected ? 'Connect Wallet' : 
+                 quest.currentWeatherMatch ? 'Complete' : 'Complete'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Real Player Stats using blockchain data
+const PlayerStats = ({ blockchain }) => {
+  const { playerStats, tokenBalance, account, connected } = blockchain;
+
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.1)',
+      backdropFilter: 'blur(10px)',
+      borderRadius: '20px',
+      padding: '2rem',
+      marginBottom: '2rem',
+      width: '100%'
+    }}>
+      <h2 style={{ color: '#fff', marginBottom: '1rem', fontSize: '1.8rem' }}>Player Stats</h2>
+      {account && (
+        <div style={{ marginBottom: '1rem', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+          <span style={{ color: '#ccc', fontSize: '0.9rem' }}>Address: </span>
+          <span style={{ color: '#4CAF50', fontSize: '0.9rem' }}>
+            {account.slice(0, 8)}...{account.slice(-6)}
+          </span>
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '2.5rem', color: '#4CAF50', fontWeight: 'bold' }}>
+            {connected ? playerStats.level : '?'}
+          </div>
+          <div style={{ color: '#ccc', fontSize: '1.1rem' }}>Level</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '2.5rem', color: '#2196F3', fontWeight: 'bold' }}>
+            {connected ? playerStats.experience : '?'}
+          </div>
+          <div style={{ color: '#ccc', fontSize: '1.1rem' }}>Experience</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '2.5rem', color: '#FF9800', fontWeight: 'bold' }}>
+            {connected ? playerStats.questsCompleted : '?'}
+          </div>
+          <div style={{ color: '#ccc', fontSize: '1.1rem' }}>Quests</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '2.5rem', color: '#9C27B0', fontWeight: 'bold' }}>
+            {connected ? tokenBalance : '?'}
+          </div>
+          <div style={{ color: '#ccc', fontSize: '1.1rem' }}>$WEATHER</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Real Contract Status using blockchain data
+const ContractStatus = ({ blockchain }) => {
+  const { contractAddresses, connected } = blockchain;
+  const [sttBalance, setSttBalance] = useState('0');
+
+  useEffect(() => {
+    const getBalance = async () => {
+      if (connected && blockchain.account && window.ethereum) {
+        try {
+          const balanceWei = await window.ethereum.request({
+            method: 'eth_getBalance',
+            params: [blockchain.account, 'latest']
+          });
+          const balanceSTT = parseInt(balanceWei, 16) / Math.pow(10, 18);
+          setSttBalance(balanceSTT.toFixed(4));
+        } catch (error) {
+          console.error('Error getting balance:', error);
+        }
+      }
+    };
+    getBalance();
+  }, [connected, blockchain.account]);
+
+  const contracts = [
+    { name: "WeatherOracle", deployed: true, address: contractAddresses?.WeatherOracle },
+    { name: "WeatherToken", deployed: true, address: contractAddresses?.WeatherToken },
+    { name: "WeatherNFT", deployed: true, address: contractAddresses?.WeatherNFT },
+    { name: "QuestManager", deployed: true, address: contractAddresses?.QuestManager },
+    { name: "MultiplayerSync", deployed: true, address: contractAddresses?.MultiplayerSync }
+  ];
+
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.1)',
+      backdropFilter: 'blur(10px)',
+      borderRadius: '20px',
+      padding: '2rem',
+      width: '100%'
+    }}>
+      <h2 style={{ color: '#fff', marginBottom: '1rem', fontSize: '1.8rem' }}>Contract Status</h2>
+
+      <div style={{
+        marginBottom: '1rem',
+        padding: '1rem',
+        background: 'rgba(76, 175, 80, 0.1)',
+        borderRadius: '10px',
+        border: '1px solid #4CAF50',
+        textAlign: 'center'
+      }}>
+        <div style={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '1.2rem' }}>
+          💰 Wallet Balance
+        </div>
+        <div style={{ color: '#fff', fontSize: '1.8rem', fontWeight: 'bold' }}>
+          {sttBalance} STT
+        </div>
+        <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
+          {connected ? 'All contracts deployed!' : 'Connect wallet to see balance'}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gap: '1rem' }}>
+        {contracts.map((contract, index) => (
+          <div key={index} style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '1rem',
+            background: 'rgba(255,255,255,0.05)',
+            borderRadius: '10px'
+          }}>
+            <span style={{ color: '#fff', fontSize: '1.1rem' }}>{contract.name}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <span style={{
+                background: contract.deployed ? '#4CAF50' : '#ff4444',
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%'
+              }}></span>
+              <span style={{ color: '#ccc', fontSize: '1rem' }}>
+                {contract.deployed ? 'Deployed ✅' : 'Pending'}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Main App Component
+function App() {
+  const blockchain = useBlockchain();
+
+  return (
+    <>
+      <GlobalStyles />
+      <div style={{
+        minHeight: '100vh',
+        width: '100vw',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        padding: '2rem',
+        fontFamily: 'Arial, sans-serif',
+        boxSizing: 'border-box',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: '1600px',
+          margin: '0 auto'
+        }}>
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+            <h1 style={{
+              color: '#fff',
+              fontSize: '4rem',
+              margin: 0,
+              textShadow: '2px 2px 4px rgba(0,0,0,0.5)'
+            }}>
+              🌩️ Reactive Weather Oracle Quest
+            </h1>
+            <p style={{ color: '#ccc', fontSize: '1.5rem', margin: '1rem 0' }}>
+              World's First Weather-Reactive Blockchain Adventure Game
+            </p>
+            <div style={{
+              background: 'rgba(255,255,255,0.1)',
+              padding: '0.5rem 1rem',
+              borderRadius: '20px',
+              display: 'inline-block',
+              marginTop: '0.5rem'
+            }}>
+              <span style={{ color: '#4CAF50', fontWeight: 'bold' }}>🎉 LIVE: </span>
+              <span style={{ color: '#ccc' }}>Real Blockchain Integration Active!</span>
+            </div>
+          </div>
+
+          {/* Wallet Connect Component */}
+          <WalletConnect blockchain={blockchain} />
+
+          {/* Main 2x2 Grid Layout */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '3rem',
+            marginBottom: '3rem',
+            width: '100%'
+          }}>
+            <WeatherDashboard blockchain={blockchain} />
+            <PlayerStats blockchain={blockchain} />
+            <QuestBoard blockchain={blockchain} />
+            <ContractStatus blockchain={blockchain} />
+          </div>
+
+          {/* Footer */}
+          <div style={{
+            textAlign: 'center',
+            marginTop: '2rem',
+            padding: '2rem',
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: '20px'
+          }}>
+            <p style={{ color: '#ccc', margin: 0, fontSize: '1.3rem' }}>
+              🚀 Built for Somnia Network | Sub-second finality | 400K+ TPS |
+              {blockchain.connected ? ' 🔗 Blockchain Connected!' : ' 🔗 Connect Wallet to Play'}
+            </p>
+            {blockchain.connected && (
+              <div style={{ marginTop: '1rem', color: '#4CAF50' }}>
+                ✅ Real-time contract interactions enabled!
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export default App;

@@ -1,0 +1,120 @@
+/* FILE: frontend/src/index.css */
+/* Import Tailwind CSS base, components, and utilities */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  html, body, #root {
+    @apply h-full w-full m-0 p-0;
+    font-family: 'Inter', sans-serif;
+  }
+  
+  * {
+    @apply box-border;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  .glass {
+    @apply bg-white/10 backdrop-blur-sm border border-white/20;
+  }
+  
+  .glass-card {
+    @apply bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6;
+  }
+  
+  .gradient-bg {
+    background: linear-gradient(-45deg, #667eea, #764ba2, #6B73FF, #9644E3, #667eea);
+    background-size: 400% 400%;
+    animation: gradient-shift 15s ease infinite;
+  }
+  
+  .weather-card {
+    @apply glass-card text-white transition-all duration-300 hover:bg-white/20;
+  }
+  
+  .button-primary {
+    @apply bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl;
+  }
+  
+  .button-secondary {
+    @apply bg-white/10 hover:bg-white/20 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 backdrop-blur-sm border border-white/20;
+  }
+}
+
+/* Custom utilities */
+@layer utilities {
+  .text-shadow {
+    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .text-shadow-lg {
+    text-shadow: 0 4px 8px rgba(0,0,0,0.2);
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Custom animations */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-white/10 rounded;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-white/30 rounded hover:bg-white/50;
+}
+
+/* Loading animations */
+.animate-pulse-slow {
+  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Weather-specific styles */
+.weather-storm {
+  @apply bg-gradient-to-br from-purple-900 via-purple-700 to-indigo-800;
+}
+
+.weather-sunshine {
+  @apply bg-gradient-to-br from-yellow-400 via-orange-400 to-red-400;
+}
+
+.weather-rain {
+  @apply bg-gradient-to-br from-blue-800 via-blue-600 to-blue-400;
+}
+
+.weather-snow {
+  @apply bg-gradient-to-br from-blue-200 via-blue-100 to-white text-gray-800;
+}
+
+.weather-fog {
+  @apply bg-gradient-to-br from-gray-600 via-gray-500 to-gray-400;
+}
