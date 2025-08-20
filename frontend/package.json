@@ -2,6 +2,9 @@
   "name": "weather-oracle-quest-frontend",
   "version": "1.0.0",
   "private": true,
+  "overrides": {
+    "ajv": "^6.12.6"
+  },
   "dependencies": {
     "@thirdweb-dev/react": "^4.2.7",
     "@thirdweb-dev/sdk": "^4.0.25",
