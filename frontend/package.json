@@ -3,11 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "overrides": {
-    "ajv": "^6.12.6"
+    "ajv": "^6.12.6",
+    "ajv-keywords": "^3.5.2"
+  },
+  "resolutions": {
+    "ajv": "^6.12.6",
+    "ajv-keywords": "^3.5.2"
   },
   "dependencies": {
     "@thirdweb-dev/react": "^4.2.7",
     "@thirdweb-dev/sdk": "^4.0.25",
+    "ajv": "^6.12.6",
+    "ajv-keywords": "^3.5.2",
     "ethers": "^6.7.1",
     "framer-motion": "^10.18.0",
     "lucide-react": "^0.263.1",
